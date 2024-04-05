@@ -12,7 +12,7 @@ library(raster)
 library(stringr)
 
 #input files
-f_ebd <- ""
+f_ebd <- "data/ebd_TW_smp_relFeb-2024.txt"
 ebd_dt <- fread(f_ebd, quote="", encoding = "UTF-8", colClasses = "character")
 adminarealist<-fread("adminarealist.csv",encoding = "UTF-8", colClasses = "character")
 
@@ -145,8 +145,6 @@ system.time(
 )
 stopCluster(cl)
 
-colnames(ebd_loc_final)
-
 ebd_loc_final <- ebd_loc_final %>%
   dplyr::select(file_ID, dwcID, decimalLatitude, decimalLongitude, TOWNNAME, COUNTYNAME) %>%
   setDT() %>%
@@ -163,17 +161,22 @@ ebd_loc_final<- ebd_loc_final %>%
   .[, minimumElevationInMeters := extract(elevation_raster, .[,c("decimalLongitude", "decimalLatitude")])] %>%
   subset(., select = -c(file_ID))
 
+colnames(ebd_loc_final)
+
 ebd_loc_final<- ebd_loc_final %>%
-  .[,decimalLongitude := as.character(decimalLongitude)] %>%
-  .[,decimalLatitude := as.character(decimalLatitude)]
+  dplyr::select(dwcID, municipality, county_catch, minimumElevationInMeters)
 
 #ebd_loc_result
-ebd_loc_result<-merge(ebd_table, ebd_loc_final,  by=c("dwcID","decimalLatitude", "decimalLongitude"), all.x=TRUE)
-
+ebd_loc_result<-merge(ebd_table, ebd_loc_final,  by=c("dwcID"))
 
 ebd_table_final<-ebd_loc_result %>%
-  mutate(county = str_replace(county,'臺','台')) %>%
-  mutate(countyy_catch = str_replace(county_catch,'臺','台')) %>%
+  .[, county := as.character(county)] %>%
+  .[, county_catch := as.character(county_catch)] %>%
+  .[, municipality := as.character(municipality)] %>%
+  .[, municipality := ifelse(is.na(municipality), "", municipality)] %>%
+  mutate(county_catch = str_replace(county_catch,'臺','台')) 
+
+ebd_table_final<-ebd_table_final %>%
   mutate(municipality = ifelse(county==county_catch, municipality, "")) %>%
   subset(., select = -c(county_catch))
 
@@ -190,22 +193,18 @@ ebd_table_final <- ebd_table_final %>%
 #issue
 ebd_table_final<-ebd_table_final %>%
   mutate(issue = case_when(
-    county != "" &  minimumElevationInMeters != "" ~ "County and Municipality derived from coordinates by TBN; minimumElevationInMeters derived from coordinates by TBN",
-    county != "" &  minimumElevationInMeters == "" ~ "County and Municipality derived from coordinates by TBN",
-    county == "" &  minimumElevationInMeters != "" ~ "minimumElevationInMeters derived from coordinates by TBN",
+    municipality != "" &  minimumElevationInMeters != "" ~ "County and Municipality derived from coordinates by TBN; minimumElevationInMeters derived from coordinates by TBN",
+    municipality != "" &  minimumElevationInMeters == "" ~ "County and Municipality derived from coordinates by TBN",
+    municipality == "" &  minimumElevationInMeters != "" ~ "minimumElevationInMeters derived from coordinates by TBN",
     TRUE ~ ""
   ))
 
 #save file
-head(ebd_table_final)
-
 ebd_split<-ebd_table_final %>% split(., rep(1:ceiling(nrow(.)/250000), each=250000, length.out=nrow(.)))
-
-ebd_table_final<-ebd_table_final %>% subset(., select = -c(county_catch))
 
 dir.create("result")
 
 for (i in 1:ceiling(nrow(ebd_table_final)/250000)) {
   table<-setDT(ebd_split[[i]])
-  fwrite(table, sprintf("result/ebd_split_%s.csv", i))
+  write.csv(table, sprintf("result/ebd_split_%s.csv",i),fileEncoding = "UTF-8",row.names=FALSE)
 }
