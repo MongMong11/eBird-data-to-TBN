@@ -20,9 +20,6 @@ ebd_dt<-lapply(file_name, function(x)
     fread(x, sep = ",", colClasses = "character", encoding= "UTF-8"))%>%
   do.call(rbind, .)
 
-head(ebd_dt)
-
-
 #### plot 1: bar plot of the data numbers by state and county ####
 
 #plot1_data
